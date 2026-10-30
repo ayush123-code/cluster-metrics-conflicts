@@ -1,0 +1,17 @@
+Solution,purity,inverse_purity,pair_precision,pair_recall,accuracy,pair_f1,class_f,bcubed_f1,ari,nmi
+k-means k=2,14,9,14,5,13,13,13,13,13,13
+k-means k=3,13,12,13,11,11,12,12,11,12,12
+k-means k=4,12,11,12,8,9,9,10,9,9,9
+k-means k=5,3,4,3,6,1,2,2,3,2,3
+k-means k=6,7,13,5,13,7,7,6,8,7,6
+k-means k=8,10,14,6,14,10,10,9,10,10,10
+k-means k=10,8,15,8,15,12,11,11,12,11,11
+agglo-ward k=5,9,10,10,12,6,8,8,7,8,8
+agglo-average k=5,6,7,9,10,4,6,5,6,6,5
+agglo-single k=5,15,3,15,3,14,15,15,14,14,15
+GMM k=5,4,5,4,7,2,3,3,4,3,4
+truth + 10% noise,5,6,7,9,3,5,4,5,5,7
+"truth, split largest",1,7,1,4,4,1,1,1,1,1
+"truth, merge 2 smallest",11,1,11,1,8,4,7,2,4,2
+single cluster,16,1,16,1,15,14,14,15,15,16
+all singletons,1,16,1,16,16,16,16,16,15,14

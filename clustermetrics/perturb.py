@@ -2,7 +2,8 @@
 
 Each function returns a new predicted labelling so that the exact kind and
 amount of error is known, which lets us attribute metric behaviour to a
-specific failure mode.
+specific failure mode. Class ids passed in refer to the original values in
+``y_true``; outputs are relabelled to ``0..k-1``.
 """
 
 from __future__ import annotations
@@ -14,14 +15,29 @@ def _relabel(y) -> np.ndarray:
     return np.unique(np.asarray(y), return_inverse=True)[1]
 
 
+def _encode(y_true):
+    classes, codes = np.unique(np.asarray(y_true), return_inverse=True)
+
+    def code_of(ids) -> np.ndarray:
+        ids = np.atleast_1d(np.asarray(ids))
+        pos = np.searchsorted(classes, ids)
+        if np.any(pos >= classes.size) or np.any(classes[np.minimum(pos, classes.size - 1)] != ids):
+            raise ValueError(f"unknown class id(s) {ids.tolist()}; classes are {classes.tolist()}")
+        return pos
+
+    return codes.astype(np.int64), code_of
+
+
 def fragment(y_true, classes, pieces: int, rng=None) -> np.ndarray:
     """Split every class in ``classes`` into ``pieces`` near-equal clusters."""
     rng = np.random.default_rng(rng)
-    y = _relabel(y_true).astype(np.int64)
+    y, code_of = _encode(y_true)
     pred = y.copy()
     next_label = int(y.max()) + 1
-    for cls in np.atleast_1d(classes):
+    for cls in code_of(classes):
         idx = np.flatnonzero(y == cls)
+        if pieces > idx.size:
+            raise ValueError(f"cannot split a class of {idx.size} points into {pieces} pieces")
         rng.shuffle(idx)
         for part in np.array_split(idx, pieces)[1:]:
             pred[part] = next_label
@@ -30,21 +46,21 @@ def fragment(y_true, classes, pieces: int, rng=None) -> np.ndarray:
 
 
 def fragment_all(y_true, pieces: int, rng=None) -> np.ndarray:
-    return fragment(y_true, np.unique(_relabel(y_true)), pieces, rng)
+    return fragment(y_true, np.unique(y_true), pieces, rng)
 
 
 def merge(y_true, groups) -> np.ndarray:
     """Merge classes; ``groups`` is an iterable of class-id collections."""
-    y = _relabel(y_true)
+    y, code_of = _encode(y_true)
     pred = y.copy()
     for group in groups:
-        group = list(group)
-        pred[np.isin(y, group)] = group[0]
+        codes = code_of(list(group))
+        pred[np.isin(y, codes)] = codes[0]
     return _relabel(pred)
 
 
 def label_noise(y_true, rate: float, rng=None) -> np.ndarray:
-    """Reassign a ``rate`` fraction of points to a uniformly random other label."""
+    """Independently, with probability ``rate``, move each point to a random other label."""
     rng = np.random.default_rng(rng)
     y = _relabel(y_true)
     k = int(y.max()) + 1

@@ -120,6 +120,15 @@ class TestProperties(unittest.TestCase):
         self.assertEqual(bcubed(self.y, p)[1], 1.0)
         self.assertLess(purity(self.y, p), 1.0)
 
+    def test_perturbations_use_original_class_ids(self):
+        y = np.array([10, 10, 10, 10, 20, 20, 30, 30])
+        self.assertEqual(np.unique(perturb.fragment(y, [10], 2, rng=0)).size, 4)
+        self.assertEqual(np.unique(perturb.merge(y, [[20, 30]])).size, 2)
+        with self.assertRaises(ValueError):
+            perturb.merge(y, [[1, 2]])
+        with self.assertRaises(ValueError):
+            perturb.fragment(y, [20], 3)
+
     def test_degenerate_solutions(self):
         one = evaluate(self.y, perturb.single_cluster(self.y))
         self.assertAlmostEqual(one["purity"], 0.4)

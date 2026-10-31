@@ -13,13 +13,15 @@ matrix. We then evaluate them under controlled fragmentation and merging, a clas
 sweep, k-means with k = 1…15, and a ranking of 16 candidate solutions on balanced and
 imbalanced data.
 
-One-sided metrics are maximised by degenerate clusterings. On imbalanced data, purity
-peaks at k = 13 and pair recall at
-k = 1. Metrics without chance correction
-prefer a single all-inclusive cluster over a near-perfect solution once the majority class
-exceeds a metric-specific share of the data: p ≥ 0.70 for
-accuracy and p ≥ 0.80 for BCubed F1. ARI and NMI never do.
-Among 11 solutions produced by clustering algorithms, the mean Kendall rank
+One-sided metrics are maximised by degenerate clusterings. Pair recall and inverse purity
+peak at k = 1. Purity and pair precision plateau near 0.95 for every k ≥ 4 and
+reach 1.0 only on refinements of the truth, such as putting every point in its own cluster.
+Metrics without chance correction prefer a single all-inclusive cluster over a solution
+with one fragmentation error once the majority class is large enough: above exactly
+p = 2/3 for accuracy, and somewhere in (0.75, 0.80] for BCubed F1. ARI,
+which is chance-corrected, never does. NMI never does either, but only because a single
+cluster carries zero mutual information. NMI is not chance-corrected: it gives "all
+singletons" 0.286 where ARI gives 0. Among 11 solutions produced by clustering algorithms, the mean Kendall rank
 correlation between six two-sided metrics drops from 0.95 on balanced data
 to 0.83 on imbalanced data.
 
@@ -78,7 +80,7 @@ class sizes, `b_j` the cluster sizes and `N` the number of points.
 | Class F-measure | Σ_i (a_i/N) max_j F(i, j) (Larsen & Aone) | one cluster may serve several classes |
 | BCubed F1 | per-point precision / recall, then F1 | — |
 | ARI | Rand index corrected for chance | — |
-| NMI | mutual information / mean entropy | mild bias towards more clusters |
+| NMI | mutual information / mean entropy | not chance-corrected: lenient towards over-splitting (all singletons > 0); AMI is the corrected form |
 
 ### Worked contingency matrix (imbalanced data, k-means with k = 8)
 
@@ -120,10 +122,14 @@ K-means with k = 1…15 on 5-class blobs (balanced: 5 × 240 points; imbalanced:
 ![vary k](figures/exp1_vary_k.png)
 
 The one-sided metrics are pulled towards the extremes. Inverse purity and pair recall are
-maximised by a single cluster (k = 1). On the imbalanced data, purity peaks at
-k = 13 and pair precision at
-k = 7. Both can be inflated simply by
-asking for more clusters.
+maximised by a single cluster (k = 1). Purity and pair precision move the other way, but
+on the imbalanced data they flatten out quickly. For every k ≥ 4, purity stays
+between 0.933 and 0.957 and pair precision between 0.901 and
+0.954. Their nominal best k values in the table, k =
+13 and k =
+7, are not meaningful peaks within that
+plateau. Neither metric penalises extra clusters, and both reach 1.0 only on refinements of
+the truth such as all singletons.
 
 On the imbalanced data, every two-sided metric prefers
 k = 4 to the true k = 5. The contingency
@@ -202,6 +208,10 @@ the reverse.
 | imbalanced: merge two smallest | 0.950 | 1.000 | 0.981 | 1.000 | 0.950 | 0.991 | 0.955 | 0.966 | 0.980 | 0.945 |
 | imbalanced: merge majority + smallest | 0.950 | 1.000 | 0.882 | 1.000 | 0.950 | 0.937 | 0.932 | 0.951 | 0.859 | 0.888 |
 
+*Separate synthetic labellings, distinct from the blob data and from Experiment 3. Balanced
+rows: 4 classes × 250 points. Imbalanced
+rows: class sizes [700, 150, 100, 50] (1000 points).*
+
 The same structural mistake costs very different amounts depending on which class it
 hits. On imbalanced data, splitting the majority class in half costs pair F1 a lot because
 it destroys a quadratic number of pairs. NMI, by contrast, stays relatively high
@@ -219,19 +229,23 @@ split evenly over three minority classes.
 
 ![imbalance](figures/exp3_imbalance.png)
 
-**When does a degenerate one-cluster answer beat a near-perfect answer that only splits
-the majority class in two?**
+**When does a degenerate one-cluster answer beat a solution with one fragmentation error
+(perfect except that the majority class is split in two)?**
 
-| Metric | single cluster ≥ split-majority when |
-|---|---|
-| Purity | never |
-| Inverse purity | always |
-| Max-matching accuracy | p ≥ 0.70 |
-| Pair F1 | p ≥ 0.75 |
-| Class F-measure | p ≥ 0.80 |
-| BCubed F1 | p ≥ 0.80 |
-| ARI | never |
-| NMI | never |
+| Metric | crossover p lies in (sweep step 0.05) | exact crossover |
+|---|---|---|
+| Purity | never | – |
+| Inverse purity | always | – |
+| Max-matching accuracy | (0.65, 0.70] | p = 2/3 (single cluster scores p, split scores 1 − p/2) |
+| Pair F1 | (0.70, 0.75] | – |
+| Class F-measure | (0.75, 0.80] | – |
+| BCubed F1 | (0.75, 0.80] | – |
+| ARI | never | – |
+| NMI | never | – |
+
+The sweep moves *p* in steps of 0.05, so each crossover is only known to lie within one
+step. Accuracy has a closed form: the single cluster scores *p* and the split scores
+1 − *p*/2, so they cross at exactly *p* = 2/3.
 
 **Best solution per metric as imbalance grows:**
 
@@ -246,12 +260,24 @@ the majority class in two?**
 | ARI | split majority in 2 | split majority in 2 | merge all minorities | merge all minorities |
 | NMI | split majority in 2 | split majority in 2 | merge all minorities | merge all minorities |
 
+The p = 0.50 row looks surprising: accuracy prefers 20% random noise
+(0.807) to both structural errors (split majority
+0.750, merge minorities 0.667). Random
+noise costs about 20% of the points whatever the class sizes. Splitting the majority costs
+*p*/2 of the points, and merging the three minorities costs 2(1 − *p*)/3. Noise therefore
+wins under accuracy whenever both structural errors cost more than 20%, which in this sweep
+happens for p = 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70.
+
 At p = 0.95 the single cluster scores purity 0.950,
 accuracy 0.950 and pair F1
 0.949, but ARI 0.000
-and NMI 0.000. Metrics without chance correction inherit
-the majority-class baseline, so their absolute values become uninterpretable under
-imbalance. Their rankings can also flip in favour of trivial solutions.
+and NMI 0.000. The two zeros have different causes. ARI is
+chance-corrected, so any labelling that is no better than random scores 0. NMI is not
+chance-corrected: it is 0 here only because a single cluster shares no information with
+the classes, and it still rewards over-splitting (all singletons score
+0.286 on the imbalanced blobs). Metrics without chance correction inherit
+the majority-class baseline, so their absolute values become hard to interpret under
+imbalance, and their rankings can flip in favour of trivial solutions.
 
 ## 5. Experiment 4: do metrics rank the same solutions the same way?
 
@@ -377,37 +403,43 @@ ranked 2 by purity and
    the smallest class reverses this (class F 0.932, accuracy
    0.950): the small class loses almost all of its precision, while
    accuracy still credits every majority point.
-4. **Some correct for chance and some do not.** With a 95% majority class, putting
-   everything in one cluster scores accuracy 0.950 and pair F1
-   0.949, while ARI = 0.000. The near-perfect
-   "split majority in 2" solution scores accuracy 0.525 and pair F1
-   0.667, but ARI 0.162. Uncorrected metrics
-   inherit the majority-class baseline, so they rank the useless answer higher once
-   imbalance passes a metric-specific threshold. That threshold is
-   p ≥ 0.70 for accuracy and
-   p ≥ 0.75 for pair F1 (see Experiment 3). The same
-   comparison on the moderately imbalanced blobs (58% majority) does not flip: the single
-   cluster's accuracy of 0.583 is still below
-   0.708.
-5. **They are biased by the number of clusters.** Purity tends to rise with k (on the
-   imbalanced data it peaks at k = 13). NMI is
-   lenient towards over-splitting and harsh on under-splitting. It ranks k-means k = 2
-   10 of 11, where accuracy ranks it
-   4, and it ranks k = 10
-   9, where accuracy ranks it
-   11. Accuracy punishes any surplus cluster in full.
-6. **Imbalance amplifies all of the above.** Among the algorithmic solutions, the mean
-   Kendall tau between the six two-sided metrics falls from 0.95 on
-   balanced data to 0.83 on imbalanced data. A typical pair of these
-   metrics orders 3% of solution pairs oppositely on balanced data
-   and 9% on imbalanced data, and the average rank spread
-   of a solution grows from 0.5 to 1.8 places.
+4. **Only some of them correct for chance.** With a 95% majority class, putting everything
+   in one cluster scores accuracy 0.950 and pair F1
+   0.949, while ARI = 0.000. A solution with one
+   fragmentation error (the majority split in two) scores accuracy
+   0.525 and pair F1 0.667, but ARI
+   0.162. Uncorrected metrics inherit the majority-class baseline, so they
+   rank the useless answer higher once imbalance passes a metric-specific threshold:
+   exactly p = 2/3 for accuracy, and somewhere in (0.70, 0.75] for pair F1
+   (see Experiment 3). Of the metrics studied, only ARI is chance-corrected. NMI also gives
+   the single cluster 0, but only because it shares no information with the classes; NMI
+   still gives all singletons 0.286. The chance-corrected form of NMI is the
+   adjusted mutual information, AMI (Vinh et al., 2010). On the moderately imbalanced blobs
+   (58% majority) the comparison does not flip: the single cluster's accuracy of
+   0.583 is still below 0.708.
+
+**What amplifies them**
+
+- **A wrong number of clusters.** One-sided metrics reward moving k in one direction:
+  purity and pair precision plateau as k grows, while inverse purity and pair recall peak
+  at k = 1. Two-sided metrics differ in how hard they punish a wrong k. NMI is lenient
+  towards over-splitting and harsh on under-splitting: on the imbalanced data it ranks
+  k-means with k = 2 at 10 of 11 (accuracy: rank
+  4) and k-means with k = 10 at
+  9 of 11 (accuracy: rank
+  11). Accuracy charges every surplus cluster in full.
+- **Class imbalance.** Among the algorithmic solutions, the mean Kendall tau between the
+  six two-sided metrics falls from 0.95 on balanced data to
+  0.83 on imbalanced data. A typical pair of these metrics orders
+  3% of solution pairs oppositely on balanced data and
+  9% on imbalanced data, and the average rank spread of a solution
+  grows from 0.5 to 1.8 places.
 
 **Practical consequence:** a single number cannot certify a clustering as better. Report
 a complementary pair that exposes both error types, such as pair or BCubed precision and
-recall, or purity and inverse purity. Add a chance-corrected score (ARI) and show the
-contingency matrix itself, which is the only view that records exactly which classes were
-split or merged.
+recall, or purity and inverse purity. Add a chance-corrected score (ARI, or AMI rather than
+NMI) and show the contingency matrix itself, which is the only view that records exactly
+which classes were split or merged.
 
 ## References
 

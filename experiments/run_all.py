@@ -41,6 +41,8 @@ DATASETS = {
     "imbalanced": [700, 250, 120, 80, 50],
 }
 TRUE_K = len(CENTERS)
+SINGLE_ERROR_BALANCED = [250, 250, 250, 250]
+SINGLE_ERROR_IMBALANCED = [700, 150, 100, 50]
 
 ONE_SIDED = ["purity", "inverse_purity", "pair_precision", "pair_recall"]
 TWO_SIDED = ["accuracy", "pair_f1", "class_f", "bcubed_f1", "ari", "nmi"]
@@ -202,8 +204,8 @@ def exp_frag_merge():
     plt.close(fig)
 
     # Single errors of comparable size, on balanced vs imbalanced truths.
-    y_bal = np.repeat(np.arange(4), 250)
-    y_imb = np.repeat(np.arange(4), [700, 150, 100, 50])
+    y_bal = np.repeat(np.arange(len(SINGLE_ERROR_BALANCED)), SINGLE_ERROR_BALANCED)
+    y_imb = np.repeat(np.arange(len(SINGLE_ERROR_IMBALANCED)), SINGLE_ERROR_IMBALANCED)
     scenarios = {
         "balanced: split one class in 2": (y_bal, perturb.fragment(y_bal, [0], 2, rng=SEED)),
         "balanced: merge two classes": (y_bal, perturb.merge(y_bal, [[0, 1]])),
@@ -269,8 +271,16 @@ def exp_imbalance(fractions=np.round(np.arange(0.25, 0.951, 0.05), 2)):
         elif not wins.any():
             cross[label(m)] = "never"
         else:
-            cross[label(m)] = f"p ≥ {wins[wins].index.min():.2f}"
-    cross = pd.DataFrame({"single cluster ≥ split-majority when": cross})
+            first = wins[wins].index.min()
+            prev = wins.index[wins.index < first].max()
+            cross[label(m)] = f"({prev:.2f}, {first:.2f}]"
+    closed = {label("accuracy"): "p = 2/3 (single cluster scores p, split scores 1 − p/2)"}
+    cross = pd.DataFrame(
+        {
+            "crossover p lies in (sweep step 0.05)": cross,
+            "exact crossover": {k: closed.get(k, "–") for k in cross},
+        }
+    )
     cross.index.name = "Metric"
 
     winners = {}
@@ -468,6 +478,14 @@ def write_report(ex0, e1, e2, e3, e4):
     best_algo = by_solution(lambda s: s.idxmax())
     worst_algo = by_solution(lambda s: s.idxmin())
     p95_single, p95_split = p95.loc["single cluster"], p95.loc["split majority in 2"]
+    singletons_nmi = imb_res["scores"].loc["all singletons", "nmi"]
+    crossover = cross.iloc[:, 0]
+    plateau = k1.loc[TRUE_K - 1 :]
+    pur_lo, pur_hi = plateau["purity"].min(), plateau["purity"].max()
+    pp_lo, pp_hi = plateau["pair_precision"].min(), plateau["pair_precision"].max()
+    p50 = imb[np.isclose(imb.majority_fraction, 0.5)].set_index("solution")["accuracy"]
+    acc_winner = imb.loc[imb.groupby("majority_fraction")["accuracy"].idxmax()]
+    noise_ps = acc_winner.loc[acc_winner.solution == "20% random noise", "majority_fraction"]
 
     report = f"""# When clustering metrics disagree
 
@@ -484,13 +502,15 @@ matrix. We then evaluate them under controlled fragmentation and merging, a clas
 sweep, k-means with k = 1…15, and a ranking of 16 candidate solutions on balanced and
 imbalanced data.
 
-One-sided metrics are maximised by degenerate clusterings. On imbalanced data, purity
-peaks at k = {", ".join(map(str, best_k_imb["purity"]))} and pair recall at
-k = {", ".join(map(str, best_k_imb["pair_recall"]))}. Metrics without chance correction
-prefer a single all-inclusive cluster over a near-perfect solution once the majority class
-exceeds a metric-specific share of the data: {cross.iloc[:, 0][label("accuracy")]} for
-accuracy and {cross.iloc[:, 0][label("bcubed_f1")]} for BCubed F1. ARI and NMI never do.
-Among {n_algo} solutions produced by clustering algorithms, the mean Kendall rank
+One-sided metrics are maximised by degenerate clusterings. Pair recall and inverse purity
+peak at k = 1. Purity and pair precision plateau near 0.95 for every k ≥ {TRUE_K - 1} and
+reach 1.0 only on refinements of the truth, such as putting every point in its own cluster.
+Metrics without chance correction prefer a single all-inclusive cluster over a solution
+with one fragmentation error once the majority class is large enough: above exactly
+p = 2/3 for accuracy, and somewhere in {crossover[label("bcubed_f1")]} for BCubed F1. ARI,
+which is chance-corrected, never does. NMI never does either, but only because a single
+cluster carries zero mutual information. NMI is not chance-corrected: it gives "all
+singletons" {singletons_nmi:.3f} where ARI gives 0. Among {n_algo} solutions produced by clustering algorithms, the mean Kendall rank
 correlation between six two-sided metrics drops from {s_bal[tau_key]:.2f} on balanced data
 to {s_imb[tau_key]:.2f} on imbalanced data.
 
@@ -549,7 +569,7 @@ class sizes, `b_j` the cluster sizes and `N` the number of points.
 | Class F-measure | Σ_i (a_i/N) max_j F(i, j) (Larsen & Aone) | one cluster may serve several classes |
 | BCubed F1 | per-point precision / recall, then F1 | — |
 | ARI | Rand index corrected for chance | — |
-| NMI | mutual information / mean entropy | mild bias towards more clusters |
+| NMI | mutual information / mean entropy | not chance-corrected: lenient towards over-splitting (all singletons > 0); AMI is the corrected form |
 
 ### Worked contingency matrix (imbalanced data, k-means with k = 8)
 
@@ -572,10 +592,14 @@ K-means with k = 1…15 on 5-class blobs (balanced: 5 × 240 points; imbalanced:
 ![vary k](figures/exp1_vary_k.png)
 
 The one-sided metrics are pulled towards the extremes. Inverse purity and pair recall are
-maximised by a single cluster (k = 1). On the imbalanced data, purity peaks at
-k = {", ".join(map(str, best_k_imb["purity"]))} and pair precision at
-k = {", ".join(map(str, best_k_imb["pair_precision"]))}. Both can be inflated simply by
-asking for more clusters.
+maximised by a single cluster (k = 1). Purity and pair precision move the other way, but
+on the imbalanced data they flatten out quickly. For every k ≥ {TRUE_K - 1}, purity stays
+between {pur_lo:.3f} and {pur_hi:.3f} and pair precision between {pp_lo:.3f} and
+{pp_hi:.3f}. Their nominal best k values in the table, k =
+{", ".join(map(str, best_k_imb["purity"]))} and k =
+{", ".join(map(str, best_k_imb["pair_precision"]))}, are not meaningful peaks within that
+plateau. Neither metric penalises extra clusters, and both reach 1.0 only on refinements of
+the truth such as all singletons.
 
 On the imbalanced data, every two-sided metric prefers
 k = {", ".join(map(str, best_k_imb["accuracy"]))} to the true k = {TRUE_K}. The contingency
@@ -618,6 +642,10 @@ the reverse.
 
 {md_table(fmt_scores(single))}
 
+*Separate synthetic labellings, distinct from the blob data and from Experiment 3. Balanced
+rows: {len(SINGLE_ERROR_BALANCED)} classes × {SINGLE_ERROR_BALANCED[0]} points. Imbalanced
+rows: class sizes {SINGLE_ERROR_IMBALANCED} ({sum(SINGLE_ERROR_IMBALANCED)} points).*
+
 The same structural mistake costs very different amounts depending on which class it
 hits. On imbalanced data, splitting the majority class in half costs pair F1 a lot because
 it destroys a quadratic number of pairs. NMI, by contrast, stays relatively high
@@ -635,21 +663,37 @@ split evenly over three minority classes.
 
 ![imbalance](figures/exp3_imbalance.png)
 
-**When does a degenerate one-cluster answer beat a near-perfect answer that only splits
-the majority class in two?**
+**When does a degenerate one-cluster answer beat a solution with one fragmentation error
+(perfect except that the majority class is split in two)?**
 
 {md_table(cross, fmt="{}")}
+
+The sweep moves *p* in steps of 0.05, so each crossover is only known to lie within one
+step. Accuracy has a closed form: the single cluster scores *p* and the split scores
+1 − *p*/2, so they cross at exactly *p* = 2/3.
 
 **Best solution per metric as imbalance grows:**
 
 {md_table(imb_winners, fmt="{}")}
 
+The p = 0.50 row looks surprising: accuracy prefers 20% random noise
+({p50["20% random noise"]:.3f}) to both structural errors (split majority
+{p50["split majority in 2"]:.3f}, merge minorities {p50["merge all minorities"]:.3f}). Random
+noise costs about 20% of the points whatever the class sizes. Splitting the majority costs
+*p*/2 of the points, and merging the three minorities costs 2(1 − *p*)/3. Noise therefore
+wins under accuracy whenever both structural errors cost more than 20%, which in this sweep
+happens for p = {", ".join(f"{p:.2f}" for p in noise_ps)}.
+
 At p = 0.95 the single cluster scores purity {p95.at["single cluster", "purity"]:.3f},
 accuracy {p95.at["single cluster", "accuracy"]:.3f} and pair F1
 {p95.at["single cluster", "pair_f1"]:.3f}, but ARI {p95.at["single cluster", "ari"]:.3f}
-and NMI {p95.at["single cluster", "nmi"]:.3f}. Metrics without chance correction inherit
-the majority-class baseline, so their absolute values become uninterpretable under
-imbalance. Their rankings can also flip in favour of trivial solutions.
+and NMI {p95.at["single cluster", "nmi"]:.3f}. The two zeros have different causes. ARI is
+chance-corrected, so any labelling that is no better than random scores 0. NMI is not
+chance-corrected: it is 0 here only because a single cluster shares no information with
+the classes, and it still rewards over-splitting (all singletons score
+{singletons_nmi:.3f} on the imbalanced blobs). Metrics without chance correction inherit
+the majority-class baseline, so their absolute values become hard to interpret under
+imbalance, and their rankings can flip in favour of trivial solutions.
 
 ## 5. Experiment 4: do metrics rank the same solutions the same way?
 
@@ -724,37 +768,43 @@ ranked {rank_of("k-means k=10", "purity")} by purity and
    the smallest class reverses this (class F {merge_mix["class_f"]:.3f}, accuracy
    {merge_mix["accuracy"]:.3f}): the small class loses almost all of its precision, while
    accuracy still credits every majority point.
-4. **Some correct for chance and some do not.** With a 95% majority class, putting
-   everything in one cluster scores accuracy {p95_single["accuracy"]:.3f} and pair F1
-   {p95_single["pair_f1"]:.3f}, while ARI = {p95_single["ari"]:.3f}. The near-perfect
-   "split majority in 2" solution scores accuracy {p95_split["accuracy"]:.3f} and pair F1
-   {p95_split["pair_f1"]:.3f}, but ARI {p95_split["ari"]:.3f}. Uncorrected metrics
-   inherit the majority-class baseline, so they rank the useless answer higher once
-   imbalance passes a metric-specific threshold. That threshold is
-   {cross.iloc[:, 0][label("accuracy")]} for accuracy and
-   {cross.iloc[:, 0][label("pair_f1")]} for pair F1 (see Experiment 3). The same
-   comparison on the moderately imbalanced blobs (58% majority) does not flip: the single
-   cluster's accuracy of {single_cluster["accuracy"]:.3f} is still below
-   {split_largest["accuracy"]:.3f}.
-5. **They are biased by the number of clusters.** Purity tends to rise with k (on the
-   imbalanced data it peaks at k = {", ".join(map(str, best_k_imb["purity"]))}). NMI is
-   lenient towards over-splitting and harsh on under-splitting. It ranks k-means k = 2
-   {rank_of("k-means k=2", "nmi")} of {n_algo}, where accuracy ranks it
-   {rank_of("k-means k=2", "accuracy")}, and it ranks k = 10
-   {rank_of("k-means k=10", "nmi")}, where accuracy ranks it
-   {rank_of("k-means k=10", "accuracy")}. Accuracy punishes any surplus cluster in full.
-6. **Imbalance amplifies all of the above.** Among the algorithmic solutions, the mean
-   Kendall tau between the six two-sided metrics falls from {s_bal[tau_key]:.2f} on
-   balanced data to {s_imb[tau_key]:.2f} on imbalanced data. A typical pair of these
-   metrics orders {100 * s_bal[dis_key]:.0f}% of solution pairs oppositely on balanced data
-   and {100 * s_imb[dis_key]:.0f}% on imbalanced data, and the average rank spread
-   of a solution grows from {s_bal[spread_key]:.1f} to {s_imb[spread_key]:.1f} places.
+4. **Only some of them correct for chance.** With a 95% majority class, putting everything
+   in one cluster scores accuracy {p95_single["accuracy"]:.3f} and pair F1
+   {p95_single["pair_f1"]:.3f}, while ARI = {p95_single["ari"]:.3f}. A solution with one
+   fragmentation error (the majority split in two) scores accuracy
+   {p95_split["accuracy"]:.3f} and pair F1 {p95_split["pair_f1"]:.3f}, but ARI
+   {p95_split["ari"]:.3f}. Uncorrected metrics inherit the majority-class baseline, so they
+   rank the useless answer higher once imbalance passes a metric-specific threshold:
+   exactly p = 2/3 for accuracy, and somewhere in {crossover[label("pair_f1")]} for pair F1
+   (see Experiment 3). Of the metrics studied, only ARI is chance-corrected. NMI also gives
+   the single cluster 0, but only because it shares no information with the classes; NMI
+   still gives all singletons {singletons_nmi:.3f}. The chance-corrected form of NMI is the
+   adjusted mutual information, AMI (Vinh et al., 2010). On the moderately imbalanced blobs
+   (58% majority) the comparison does not flip: the single cluster's accuracy of
+   {single_cluster["accuracy"]:.3f} is still below {split_largest["accuracy"]:.3f}.
+
+**What amplifies them**
+
+- **A wrong number of clusters.** One-sided metrics reward moving k in one direction:
+  purity and pair precision plateau as k grows, while inverse purity and pair recall peak
+  at k = 1. Two-sided metrics differ in how hard they punish a wrong k. NMI is lenient
+  towards over-splitting and harsh on under-splitting: on the imbalanced data it ranks
+  k-means with k = 2 at {rank_of("k-means k=2", "nmi")} of {n_algo} (accuracy: rank
+  {rank_of("k-means k=2", "accuracy")}) and k-means with k = 10 at
+  {rank_of("k-means k=10", "nmi")} of {n_algo} (accuracy: rank
+  {rank_of("k-means k=10", "accuracy")}). Accuracy charges every surplus cluster in full.
+- **Class imbalance.** Among the algorithmic solutions, the mean Kendall tau between the
+  six two-sided metrics falls from {s_bal[tau_key]:.2f} on balanced data to
+  {s_imb[tau_key]:.2f} on imbalanced data. A typical pair of these metrics orders
+  {100 * s_bal[dis_key]:.0f}% of solution pairs oppositely on balanced data and
+  {100 * s_imb[dis_key]:.0f}% on imbalanced data, and the average rank spread of a solution
+  grows from {s_bal[spread_key]:.1f} to {s_imb[spread_key]:.1f} places.
 
 **Practical consequence:** a single number cannot certify a clustering as better. Report
 a complementary pair that exposes both error types, such as pair or BCubed precision and
-recall, or purity and inverse purity. Add a chance-corrected score (ARI) and show the
-contingency matrix itself, which is the only view that records exactly which classes were
-split or merged.
+recall, or purity and inverse purity. Add a chance-corrected score (ARI, or AMI rather than
+NMI) and show the contingency matrix itself, which is the only view that records exactly
+which classes were split or merged.
 
 ## References
 

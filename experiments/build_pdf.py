@@ -29,7 +29,13 @@ SUBTITLE = (
     "A contingency-matrix study of purity, maximum-matching accuracy, precision, recall "
     "and F-measure under fragmentation, merging and class imbalance"
 )
-FIELDS = ["Name", "Roll / Student ID", "Course", "Instructor", "Date of submission"]
+MEMBERS = [
+    ("Ayush Jain", "BTECH/10889/25"),
+    ("Faraz Akhtar", "BTECH/10857/24"),
+    ("Madhur Gupta", "BTECH/10914/14"),
+    ("Ritesh Kumar", "BTECH/10835/24"),
+    ("Aditya Parashar", "BTECH/1880/24"),
+]
 # (path, line prefix at which to stop the listing, or None for the whole file)
 SOURCE_FILES = [
     ("clustermetrics/__init__.py", None),
@@ -75,12 +81,15 @@ em { color: #333; }
 .title-page .question { font-size: 11.5pt; margin: 0 auto 50px; max-width: 150mm;
                         padding: 10px 14px; border-left: 4px solid #1f3a5f;
                         background: #f2f5fa; text-align: left; }
-.fields { width: 125mm; margin: 0 auto; border: none; font-size: 11.5pt; }
-.fields td { border: none; background: none !important; padding: 9px 4px; }
-.fields td.label { width: 45mm; font-weight: 600; color: #1f3a5f; }
-.fields td.blank { border-bottom: 1px solid #555; }
+.members-heading { font-size: 13pt; font-weight: 600; color: #1f3a5f; text-align: center;
+                   margin: 0 0 8px; }
+.members { width: 120mm; margin: 0 auto; border: none; font-size: 11.5pt; }
+.members td { border: none; border-bottom: 1px solid #d0d5dd; background: none !important;
+              padding: 7px 6px; }
+.members td.name { font-weight: 600; }
+.members td.roll { text-align: right; font-family: Consolas, "Courier New", monospace; }
 
-h2#introduction-and-method, h2#references { break-before: auto; margin-top: 26px; }
+h2#introduction-and-method, h2#references { break-before: auto; margin-top: 16px; }
 
 .toc-page { break-after: page; }
 .toc-page h2 { break-before: auto; }
@@ -102,7 +111,8 @@ pre.output { font-size: 8pt; background: #f2f4f7; padding: 8px; border: 1px soli
 
 def title_page() -> str:
     rows = "\n".join(
-        f'<tr><td class="label">{f}</td><td class="blank">&nbsp;</td></tr>' for f in FIELDS
+        f'<tr><td class="name">{name}</td><td class="roll">{roll}</td></tr>'
+        for name, roll in MEMBERS
     )
     return f"""
 <section class="title-page">
@@ -110,7 +120,8 @@ def title_page() -> str:
   <p class="subtitle">{SUBTITLE}</p>
   <p class="question"><strong>Research question.</strong> How can evaluation metrics produce
   conflicting conclusions about clustering quality?</p>
-  <table class="fields">{rows}</table>
+  <p class="members-heading">Members</p>
+  <table class="members">{rows}</table>
 </section>"""
 
 

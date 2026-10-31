@@ -8,13 +8,10 @@ The HTML is printed to PDF with headless Microsoft Edge or Google Chrome.
 from __future__ import annotations
 
 import datetime as dt
-import html
-import io
 import os
 import shutil
 import subprocess
 import sys
-import unittest
 from pathlib import Path
 
 import markdown
@@ -33,14 +30,13 @@ SUBTITLE = (
     "and F-measure under fragmentation, merging and class imbalance"
 )
 FIELDS = ["Name", "Roll / Student ID", "Course", "Instructor", "Date of submission"]
+# (path, line prefix at which to stop the listing, or None for the whole file)
 SOURCE_FILES = [
-    "clustermetrics/__init__.py",
-    "clustermetrics/contingency.py",
-    "clustermetrics/perturb.py",
-    "clustermetrics/ranking.py",
-    "experiments/run_all.py",
-    "experiments/build_pdf.py",
-    "tests/test_metrics.py",
+    ("clustermetrics/__init__.py", None),
+    ("clustermetrics/contingency.py", None),
+    ("clustermetrics/perturb.py", None),
+    ("clustermetrics/ranking.py", None),
+    ("experiments/run_all.py", "# --- Report"),
 ]
 BROWSERS = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -131,36 +127,31 @@ def report_body() -> tuple[str, str]:
     return md.convert(body), md.toc
 
 
-def run_tests() -> str:
-    stream = io.StringIO()
-    suite = unittest.defaultTestLoader.discover(str(ROOT / "tests"), top_level_dir=str(ROOT))
-    result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
-    status = "OK" if result.wasSuccessful() else "FAILED"
-    return f"{stream.getvalue().strip()}\n\nStatus: {status}"
+def source_listing(rel: str, stop: str | None) -> tuple[str, int | None]:
+    lines = (ROOT / rel).read_text(encoding="utf-8").splitlines()
+    if stop is None:
+        return "\n".join(lines), None
+    cut = next(i for i, ln in enumerate(lines) if ln.startswith(stop))
+    while cut > 0 and not lines[cut - 1].strip():
+        cut -= 1
+    return "\n".join(lines[:cut]), cut
 
 
 def appendix() -> str:
     formatter = HtmlFormatter(linenos="inline", style="friendly")
     parts = [
         '<section class="appendix">',
-        "<h2 id='appendix-a'>Appendix A. Reproducing the results</h2>",
-        "<p>All numbers, tables and figures in this document are produced by the code in "
-        "Appendix B. From the project root:</p>",
-        "<pre class='output'>pip install -r requirements.txt\n"
-        "python -m unittest discover -s tests -t .\n"
-        "python experiments/run_all.py\n"
-        "python experiments/build_pdf.py</pre>",
-        "<p>The unit tests check every metric against hand-computed textbook values "
-        "(Manning, Raghavan &amp; Sch&uuml;tze, Fig. 16.4) and against scikit-learn's "
-        "ARI, NMI, Fowlkes&ndash;Mallows and Rand index. Output of the test run used for "
-        "this document:</p>",
-        f"<pre class='output'>{html.escape(run_tests())}</pre>",
-        "<h2 id='appendix-b'>Appendix B. Source code</h2>",
+        "<h2 id='appendix'>Appendix. Source code</h2>",
     ]
-    for rel in SOURCE_FILES:
-        code = (ROOT / rel).read_text(encoding="utf-8")
+    for rel, stop in SOURCE_FILES:
+        code, cut = source_listing(rel, stop)
         parts.append(f"<h3>{rel}</h3>")
         parts.append(highlight(code, PythonLexer(), formatter))
+        if cut is not None:
+            parts.append(
+                f"<p><em>Lines {cut + 1} onward (report and figure-table generation) are "
+                "omitted.</em></p>"
+            )
     parts.append("</section>")
     return "\n".join(parts), formatter.get_style_defs(".highlight")
 
@@ -172,8 +163,7 @@ def build_html() -> Path:
         '<section class="toc-page"><h2>Contents</h2>'
         f'<div class="toc">{toc}</div>'
         "<ul style='list-style:none;padding-left:0'>"
-        "<li><a href='#appendix-a'>Appendix A. Reproducing the results</a></li>"
-        "<li><a href='#appendix-b'>Appendix B. Source code</a></li></ul>"
+        "<li><a href='#appendix'>Appendix. Source code</a></li></ul>"
         "</section>"
     )
     doc = f"""<!DOCTYPE html>

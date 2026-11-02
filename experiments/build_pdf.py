@@ -30,11 +30,16 @@ SUBTITLE = (
     "and F-measure under fragmentation, merging and class imbalance"
 )
 MEMBERS = [
-    ("Ayush Jain", "BTECH/10889/25"),
+    ("Ayush Jain", "BTECH/10889/24"),
     ("Faraz Akhtar", "BTECH/10857/24"),
-    ("Madhur Gupta", "BTECH/10914/14"),
+    ("Madhur Gupta", "BTECH/10914/24"),
     ("Ritesh Kumar", "BTECH/10835/24"),
-    ("Aditya Parashar", "BTECH/1880/24"),
+    ("Aditya Parashar", "BTECH/10880/24"),
+]
+COURSE_INFO = [
+    ("Course", "Machine Learning Techniques"),
+    ("Batch", "AIML (H)"),
+    ("Course professor", "Dr. Jit Mukherjee"),
 ]
 # (path, line prefix at which to stop the listing, or None for the whole file)
 SOURCE_FILES = [
@@ -81,6 +86,9 @@ em { color: #333; }
 .title-page .question { font-size: 11.5pt; margin: 0 auto 50px; max-width: 150mm;
                         padding: 10px 14px; border-left: 4px solid #1f3a5f;
                         background: #f2f5fa; text-align: left; }
+.course { width: 120mm; margin: 0 auto 30px; border: none; font-size: 11.5pt; }
+.course td { border: none; background: none !important; padding: 4px 6px; }
+.course td.label { width: 42mm; font-weight: 600; color: #1f3a5f; }
 .members-heading { font-size: 13pt; font-weight: 600; color: #1f3a5f; text-align: center;
                    margin: 0 0 8px; }
 .members { width: 120mm; margin: 0 auto; border: none; font-size: 11.5pt; }
@@ -114,13 +122,17 @@ def title_page() -> str:
         f'<tr><td class="name">{name}</td><td class="roll">{roll}</td></tr>'
         for name, roll in MEMBERS
     )
+    course = "\n".join(
+        f'<tr><td class="label">{k}</td><td class="value">{v}</td></tr>' for k, v in COURSE_INFO
+    )
     return f"""
 <section class="title-page">
   <h1>{TITLE}</h1>
   <p class="subtitle">{SUBTITLE}</p>
   <p class="question"><strong>Research question.</strong> How can evaluation metrics produce
   conflicting conclusions about clustering quality?</p>
-  <p class="members-heading">Members</p>
+  <table class="course">{course}</table>
+  <p class="members-heading">Team members</p>
   <table class="members">{rows}</table>
 </section>"""
 

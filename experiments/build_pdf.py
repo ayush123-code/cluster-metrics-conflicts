@@ -7,7 +7,6 @@ The HTML is printed to PDF with headless Microsoft Edge or Google Chrome.
 
 from __future__ import annotations
 
-import datetime as dt
 import os
 import shutil
 import subprocess
@@ -167,14 +166,9 @@ def appendix() -> str:
         "<h2 id='appendix'>Appendix. Source code</h2>",
     ]
     for rel, stop in SOURCE_FILES:
-        code, cut = source_listing(rel, stop)
+        code, _ = source_listing(rel, stop)
         parts.append(f"<h3>{rel}</h3>")
         parts.append(highlight(code, PythonLexer(), formatter))
-        if cut is not None:
-            parts.append(
-                f"<p><em>Lines {cut + 1} onward (report and figure-table generation) are "
-                "omitted.</em></p>"
-            )
     parts.append("</section>")
     return "\n".join(parts), formatter.get_style_defs(".highlight")
 
@@ -197,7 +191,6 @@ def build_html() -> Path:
 {toc_html}
 {body}
 {appendix_html}
-<p style="margin-top:20px;color:#888;font-size:8pt">Generated {dt.date.today():%d %B %Y}.</p>
 </body></html>"""
     HTML_OUT.write_text(doc, encoding="utf-8")
     return HTML_OUT
